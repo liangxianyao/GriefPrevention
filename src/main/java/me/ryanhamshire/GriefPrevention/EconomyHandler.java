@@ -69,7 +69,9 @@ public class EconomyHandler implements Listener
         if (setupState != setupDone) return;
 
         // Are we configured to allow transactions?
-        if (!(instance.config_economy_claimBlocksPurchaseCost > 0 || instance.config_economy_claimBlocksSellValue > 0))
+        if (!(instance.config_economy_claimBlocksPurchaseCost > 0
+                || instance.config_economy_claimBlocksSellValue > 0
+                || instance.config_economy_claimCreationCostPerBlock > 0))
         {
             finishSetup(false, null);
             return;
@@ -91,7 +93,7 @@ public class EconomyHandler implements Listener
         // Ensure an Economy is available.
         if (registration == null)
         {
-            finishSetup(false, "ERROR: Vault was unable to find a supported economy plugin.  Either install a Vault-compatible economy plugin, or set both of the economy config variables to zero.");
+            finishSetup(false, "ERROR: Vault was unable to find a supported economy plugin. Either install a Vault-compatible economy plugin, or set all economy config values to zero.");
             return;
         }
 
@@ -104,7 +106,7 @@ public class EconomyHandler implements Listener
         setupDone = false;
         economy = new EconomyWrapper(newEconomy);
 
-        finishSetup(true, "Hooked into economy: " + economy.economy.getName() + ". Ready to buy/sell claim blocks!");
+        finishSetup(true, "Hooked into economy: " + economy.economy.getName() + ". Ready for configured claim economy features!");
     }
 
     private void finishSetup(boolean ready, String log) {

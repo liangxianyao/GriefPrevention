@@ -665,7 +665,7 @@ class PlayerEventHandler implements Listener
                     {
                         //DAS BOOT!
                         event.setResult(Result.KICK_OTHER);
-                        event.setKickMessage("You must wait " + cooldownRemaining + " seconds before logging-in again.");
+                        event.setKickMessage("请等待 " + cooldownRemaining + " 秒后再重新登录。");
                         event.disallow(event.getResult(), event.getKickMessage());
                         return;
                     }
@@ -1530,7 +1530,7 @@ class PlayerEventHandler implements Listener
                     Location location = otherPlayer.getLocation();
                     if (!otherPlayer.equals(player) && otherPlayer.getGameMode() == GameMode.SURVIVAL && player.canSee(otherPlayer) && block.getY() >= location.getBlockY() - 1 && location.distanceSquared(block.getLocation()) < minLavaDistance * minLavaDistance)
                     {
-                        GriefPrevention.sendMessage(player, TextMode.Err, Messages.NoLavaNearOtherPlayer, "another player");
+                        GriefPrevention.sendMessage(player, TextMode.Err, Messages.NoLavaNearOtherPlayer, "其他玩家");
                         bucketEvent.setCancelled(true);
                         return;
                     }

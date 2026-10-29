@@ -28,4 +28,9 @@ public class CreateClaimResult
     //when succeeded, this is a reference to the new claim
     //when failed, this is a reference to the pre-existing, conflicting claim
     public @Nullable Claim claim;
+
+    //optional economy failure details and formatted amount charged on success
+    public @Nullable Messages economyFailureMessage;
+    public String[] economyFailureMessageArgs = new String[0];
+    public @Nullable String formattedEconomyCost;
 }

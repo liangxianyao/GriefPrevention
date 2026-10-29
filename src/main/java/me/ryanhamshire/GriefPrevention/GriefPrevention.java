@@ -28,6 +28,7 @@ import me.ryanhamshire.GriefPrevention.events.SaveTrappedPlayerEvent;
 import me.ryanhamshire.GriefPrevention.events.TrustChangedEvent;
 import me.ryanhamshire.GriefPrevention.metrics.MetricsHandler;
 import net.milkbowl.vault.economy.Economy;
+import net.milkbowl.vault.economy.EconomyResponse;
 import org.bukkit.BanList;
 import org.bukkit.BanList.Type;
 import org.bukkit.Bukkit;
@@ -201,6 +202,7 @@ public class GriefPrevention extends JavaPlugin
     public int config_economy_claimBlocksMaxBonus;                  //max "bonus" blocks a player can buy.  set to zero for no limit.
     public double config_economy_claimBlocksPurchaseCost;            //cost to purchase a claim block.  set to zero to disable purchase.
     public double config_economy_claimBlocksSellValue;                //return on a sold claim block.  set to zero to disable sale.
+    public double config_economy_claimCreationCostPerBlock;           //coin cost for each block of a newly created or expanded claim.
 
     public boolean config_blockClaimExplosions;                     //whether explosions may destroy claimed blocks
     public boolean config_blockSurfaceCreeperExplosions;            //whether creeper explosions near or above the surface destroy blocks
@@ -637,6 +639,7 @@ public class GriefPrevention extends JavaPlugin
         this.config_economy_claimBlocksMaxBonus = config.getInt("GriefPrevention.Economy.ClaimBlocksMaxBonus", 0);
         this.config_economy_claimBlocksPurchaseCost = config.getDouble("GriefPrevention.Economy.ClaimBlocksPurchaseCost", 0);
         this.config_economy_claimBlocksSellValue = config.getDouble("GriefPrevention.Economy.ClaimBlocksSellValue", 0);
+        this.config_economy_claimCreationCostPerBlock = config.getDouble("GriefPrevention.Economy.ClaimCreationCostPerBlock", 0);
 
         this.config_lockDeathDropsInPvpWorlds = config.getBoolean("GriefPrevention.ProtectItemsDroppedOnDeath.PvPWorlds", false);
         this.config_lockDeathDropsInNonPvpWorlds = config.getBoolean("GriefPrevention.ProtectItemsDroppedOnDeath.NonPvPWorlds", true);
@@ -902,6 +905,7 @@ public class GriefPrevention extends JavaPlugin
         outConfig.set("GriefPrevention.Economy.ClaimBlocksMaxBonus", this.config_economy_claimBlocksMaxBonus);
         outConfig.set("GriefPrevention.Economy.ClaimBlocksPurchaseCost", this.config_economy_claimBlocksPurchaseCost);
         outConfig.set("GriefPrevention.Economy.ClaimBlocksSellValue", this.config_economy_claimBlocksSellValue);
+        outConfig.set("GriefPrevention.Economy.ClaimCreationCostPerBlock", this.config_economy_claimCreationCostPerBlock);
 
         outConfig.set("GriefPrevention.ProtectItemsDroppedOnDeath.PvPWorlds", this.config_lockDeathDropsInPvpWorlds);
         outConfig.set("GriefPrevention.ProtectItemsDroppedOnDeath.NonPvPWorlds", this.config_lockDeathDropsInNonPvpWorlds);
@@ -2779,7 +2783,7 @@ public class GriefPrevention extends JavaPlugin
             playerEventHandler.resetPattern();
             if (player != null)
             {
-                GriefPrevention.sendMessage(player, TextMode.Success, "Configuration updated.  If you have updated your Grief Prevention JAR, you still need to /reload or reboot your server.");
+                GriefPrevention.sendMessage(player, TextMode.Success, "配置已更新。如果更新了 GriefPrevention 插件 JAR，还需要执行 /reload 或重启服务器。");
             }
             else
             {
@@ -2828,11 +2832,11 @@ public class GriefPrevention extends JavaPlugin
         else if (cmd.getName().equalsIgnoreCase("gpblockinfo") && player != null)
         {
             ItemStack inHand = player.getInventory().getItemInMainHand();
-            player.sendMessage("In Hand: " + inHand.getType().name());
+            player.sendMessage("手持物品：" + inHand.getType().name());
 
             Block inWorld = player.getTargetBlockExact(300, FluidCollisionMode.ALWAYS);
             if (inWorld == null) inWorld = player.getEyeLocation().getBlock();
-            player.sendMessage("In World: " + inWorld.getType().name());
+            player.sendMessage("所在世界：" + inWorld.getType().name());
 
             return true;
         }
@@ -3534,6 +3538,85 @@ public class GriefPrevention extends JavaPlugin
     {
         Chunk chunk = location.getChunk();
         while (!chunk.isLoaded() || !chunk.load(true)) ;
+    }
+
+    boolean chargeClaimCreationCost(Player player, int area, CreateClaimResult result)
+    {
+        double costPerBlock = this.config_economy_claimCreationCostPerBlock;
+        if (costPerBlock == 0) return true;
+
+        if (player == null || area <= 0 || !Double.isFinite(costPerBlock) || costPerBlock < 0)
+        {
+            result.economyFailureMessage = Messages.ClaimEconomyTransactionFailed;
+            AddLogEntry("ERROR: Invalid claim economy configuration or area; refusing claim change.");
+            return false;
+        }
+
+        double totalCost = area * costPerBlock;
+        if (!Double.isFinite(totalCost) || totalCost <= 0)
+        {
+            result.economyFailureMessage = Messages.ClaimEconomyTransactionFailed;
+            AddLogEntry("ERROR: Invalid total claim economy cost; refusing claim change.");
+            return false;
+        }
+
+        EconomyHandler.EconomyWrapper wrapper = this.economyHandler == null ? null : this.economyHandler.getWrapper();
+        if (wrapper == null)
+        {
+            result.economyFailureMessage = Messages.ClaimEconomyUnavailable;
+            return false;
+        }
+
+        Economy economy = wrapper.getEconomy();
+        try
+        {
+            double balance = economy.getBalance(player);
+            if (!Double.isFinite(balance))
+            {
+                result.economyFailureMessage = Messages.ClaimEconomyTransactionFailed;
+                AddLogEntry("ERROR: Economy returned a non-finite balance for " + player.getName() + ".");
+                return false;
+            }
+            if (balance < totalCost)
+            {
+                result.economyFailureMessage = Messages.InsufficientFunds;
+                result.economyFailureMessageArgs = new String[]{economy.format(totalCost), economy.format(balance)};
+                return false;
+            }
+
+            String formattedCost = economy.format(totalCost);
+            EconomyResponse response = economy.withdrawPlayer(player, totalCost);
+            if (response == null || !response.transactionSuccess())
+            {
+                result.economyFailureMessage = Messages.ClaimEconomyTransactionFailed;
+                AddLogEntry("ERROR: Economy provider failed to withdraw claim cost from " + player.getName() + ".");
+                return false;
+            }
+
+            result.formattedEconomyCost = formattedCost;
+            return true;
+        }
+        catch (RuntimeException exception)
+        {
+            result.economyFailureMessage = Messages.ClaimEconomyTransactionFailed;
+            AddLogEntry("ERROR: Economy provider threw while charging claim cost for " + player.getName() + ": " + exception.getMessage());
+            return false;
+        }
+    }
+
+    static boolean sendClaimEconomyFailure(Player player, CreateClaimResult result)
+    {
+        if (result.economyFailureMessage == null) return false;
+        sendMessage(player, TextMode.Err, result.economyFailureMessage, result.economyFailureMessageArgs);
+        return true;
+    }
+
+    static void sendClaimEconomyCostPaid(Player player, CreateClaimResult result)
+    {
+        if (result.formattedEconomyCost != null)
+        {
+            sendMessage(player, TextMode.Info, Messages.ClaimCostPaid, result.formattedEconomyCost);
+        }
     }
 
     //sends a color-coded message to a player
