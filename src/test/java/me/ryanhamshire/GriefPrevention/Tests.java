@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.time.LocalDate;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -11,6 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
 
 public class Tests
 {
@@ -18,6 +20,38 @@ public class Tests
     public void testTrivial()
     {
         assertTrue(true);
+    }
+
+    @Test
+    public void dailyAccrualLimitPersistsAcrossPlayerDataReloadAndResetsNextDay()
+    {
+        GriefPrevention previous = GriefPrevention.instance;
+        GriefPrevention.instance = mock(GriefPrevention.class);
+        GriefPrevention.instance.config_claims_maxAccruedBlocksPerDay_default = 20;
+        try
+        {
+            PlayerData data = new PlayerData();
+            data.setAccruedClaimBlocks(100);
+            data.setAccruedClaimBlocksLimit(1000);
+            assertEquals(15, data.accrueBlocksLimited(15));
+            assertEquals(5, data.accrueBlocksLimited(15));
+            assertEquals(0, data.accrueBlocksLimited(15));
+            assertEquals(120, data.getAccruedClaimBlocks());
+
+            PlayerData reloaded = new PlayerData();
+            reloaded.setAccruedClaimBlocks(data.getAccruedClaimBlocks());
+            reloaded.setAccruedClaimBlocksLimit(1000);
+            reloaded.setDailyAccrual(data.getDailyAccrualDate(), data.getDailyAccruedClaimBlocks());
+            assertEquals(0, reloaded.accrueBlocksLimited(15));
+
+            reloaded.setDailyAccrual(LocalDate.now().minusDays(1).toString(), 20);
+            assertEquals(15, reloaded.accrueBlocksLimited(15));
+            assertEquals(135, reloaded.getAccruedClaimBlocks());
+        }
+        finally
+        {
+            GriefPrevention.instance = previous;
+        }
     }
 
     @Test

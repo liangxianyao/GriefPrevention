@@ -29,6 +29,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.text.SimpleDateFormat;
@@ -55,7 +56,7 @@ public class DatabaseDataStore extends DataStore
     private static final String SQL_DELETE_PLAYER_DATA =
             "DELETE FROM griefprevention_playerdata WHERE name = ?";
     private static final String SQL_INSERT_PLAYER_DATA =
-            "INSERT INTO griefprevention_playerdata (name, lastlogin, accruedblocks, bonusblocks) VALUES (?, ?, ?, ?)";
+            "INSERT INTO griefprevention_playerdata (name, lastlogin, accruedblocks, bonusblocks, dailyaccrualdate, dailyaccruedblocks, accrualremainder) VALUES (?, ?, ?, ?, ?, ?, ?)";
     private static final String SQL_SET_NEXT_CLAIM_ID =
             "INSERT INTO griefprevention_nextclaimid VALUES (?)";
     private static final String SQL_DELETE_GROUP_DATA =
@@ -102,8 +103,26 @@ public class DatabaseDataStore extends DataStore
             //ensure the data tables exist
             statement.execute("CREATE TABLE IF NOT EXISTS griefprevention_nextclaimid (nextid INTEGER)");
             statement.execute("CREATE TABLE IF NOT EXISTS griefprevention_claimdata (id INTEGER, owner VARCHAR(50), lessercorner VARCHAR(100), greatercorner VARCHAR(100), builders TEXT, containers TEXT, accessors TEXT, managers TEXT, inheritnothing BOOLEAN, parentid INTEGER)");
-            statement.execute("CREATE TABLE IF NOT EXISTS griefprevention_playerdata (name VARCHAR(50), lastlogin DATETIME, accruedblocks INTEGER, bonusblocks INTEGER)");
+            statement.execute("CREATE TABLE IF NOT EXISTS griefprevention_playerdata (name VARCHAR(50), lastlogin DATETIME, accruedblocks INTEGER, bonusblocks INTEGER, dailyaccrualdate VARCHAR(10), dailyaccruedblocks INTEGER, accrualremainder INTEGER)");
             statement.execute("CREATE TABLE IF NOT EXISTS griefprevention_schemaversion (version INTEGER)");
+
+            //Existing player tables predate daily accrual tracking.
+            boolean hasDate = false;
+            boolean hasBlocks = false;
+            boolean hasRemainder = false;
+            try (ResultSet columns = statement.executeQuery("SELECT * FROM griefprevention_playerdata WHERE 1 = 0"))
+            {
+                ResultSetMetaData metadata = columns.getMetaData();
+                for (int column = 1; column <= metadata.getColumnCount(); column++)
+                {
+                    hasDate |= metadata.getColumnName(column).equalsIgnoreCase("dailyaccrualdate");
+                    hasBlocks |= metadata.getColumnName(column).equalsIgnoreCase("dailyaccruedblocks");
+                    hasRemainder |= metadata.getColumnName(column).equalsIgnoreCase("accrualremainder");
+                }
+            }
+            if (!hasDate) statement.execute("ALTER TABLE griefprevention_playerdata ADD COLUMN dailyaccrualdate VARCHAR(10)");
+            if (!hasBlocks) statement.execute("ALTER TABLE griefprevention_playerdata ADD COLUMN dailyaccruedblocks INTEGER");
+            if (!hasRemainder) statement.execute("ALTER TABLE griefprevention_playerdata ADD COLUMN accrualremainder INTEGER");
 
             // By making this run only for MySQL, we technically support SQLite too, as this is the only invalid
             // SQL we use that SQLite does not support. Seeing as its only use is to update VERY old, existing, MySQL
@@ -501,6 +520,8 @@ public class DatabaseDataStore extends DataStore
             {
                 playerData.setAccruedClaimBlocks(results.getInt("accruedblocks"));
                 playerData.setBonusClaimBlocks(results.getInt("bonusblocks"));
+                playerData.setDailyAccrual(results.getString("dailyaccrualdate"), results.getInt("dailyaccruedblocks"));
+                playerData.setAccrualRemainder(results.getInt("accrualremainder"));
             }
         }
         catch (SQLException e)
@@ -539,6 +560,9 @@ public class DatabaseDataStore extends DataStore
             insertStmnt.setString(2, dateString);
             insertStmnt.setInt(3, playerData.getAccruedClaimBlocks());
             insertStmnt.setInt(4, playerData.getBonusClaimBlocks());
+            insertStmnt.setString(5, playerData.getDailyAccrualDate());
+            insertStmnt.setInt(6, playerData.getDailyAccruedClaimBlocks());
+            insertStmnt.setInt(7, playerData.getAccrualRemainder());
             insertStmnt.executeUpdate();
         }
         catch (SQLException e)
@@ -591,6 +615,9 @@ public class DatabaseDataStore extends DataStore
             insertStmnt.setString(2, dateString);
             insertStmnt.setInt(3, 0);
             insertStmnt.setInt(4, currentValue);
+            insertStmnt.setString(5, null);
+            insertStmnt.setInt(6, 0);
+            insertStmnt.setInt(7, 0);
             insertStmnt.executeUpdate();
         }
         catch (SQLException e)

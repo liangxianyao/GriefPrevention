@@ -25,6 +25,7 @@ import org.bukkit.OfflinePlayer;
 import org.jetbrains.annotations.Nullable;
 
 import java.net.InetAddress;
+import java.time.LocalDate;
 import java.util.Calendar;
 import java.util.UUID;
 import java.util.Vector;
@@ -44,6 +45,10 @@ public class PlayerData
 
     //temporary holding area to avoid opening data files too early
     private int newlyAccruedClaimBlocks = 0;
+
+    private String dailyAccrualDate = null;
+    private int dailyAccruedClaimBlocks = 0;
+    private int accrualRemainder = 0;
 
     //where this player was the last time we checked on him for earning claim blocks
     public Location lastAfkCheckLocation = null;
@@ -242,6 +247,9 @@ public class PlayerData
             if (storageData.accruedClaimBlocks != null)
             {
                 this.accruedClaimBlocks = storageData.accruedClaimBlocks;
+                this.dailyAccrualDate = storageData.dailyAccrualDate;
+                this.dailyAccruedClaimBlocks = storageData.dailyAccruedClaimBlocks;
+                this.accrualRemainder = storageData.accrualRemainder;
 
                 //ensure at least minimum accrued are accrued (in case of settings changes to increase initial amount)
                 if (GriefPrevention.instance.config_advanced_fixNegativeClaimblockAmounts && (this.accruedClaimBlocks < GriefPrevention.instance.config_claims_initialBlocks))
@@ -365,7 +373,63 @@ public class PlayerData
 
     public void accrueBlocks(int howMany)
     {
-        this.newlyAccruedClaimBlocks += howMany;
+        this.accrueBlocksLimited(howMany);
+    }
+
+    int accrueBlocksLimited(int howMany)
+    {
+        return this.accrueBlocksLimited(howMany, GriefPrevention.instance.config_claims_maxAccruedBlocksPerDay_default, 0);
+    }
+
+    int accrueBlocksLimited(int howMany, int dailyLimit, int maxAccruedBonus)
+    {
+        if (howMany <= 0) return 0;
+
+        int currentTotal = this.getAccruedClaimBlocks();
+        long accruedLimit = Math.min(Integer.MAX_VALUE, (long) this.getAccruedClaimBlocksLimit() + Math.max(0, maxAccruedBonus));
+        int granted = (int) Math.min(howMany, Math.max(0L, accruedLimit - currentTotal));
+        if (dailyLimit > 0)
+        {
+            String today = LocalDate.now().toString();
+            if (!today.equals(this.dailyAccrualDate))
+            {
+                this.dailyAccrualDate = today;
+                this.dailyAccruedClaimBlocks = 0;
+            }
+
+            granted = Math.min(granted, Math.max(0, dailyLimit - this.dailyAccruedClaimBlocks));
+            this.dailyAccruedClaimBlocks += granted;
+        }
+
+        this.accruedClaimBlocks = currentTotal + granted;
+        return granted;
+    }
+
+    public void setDailyAccrual(String date, int blocks)
+    {
+        this.dailyAccrualDate = date;
+        this.dailyAccruedClaimBlocks = Math.max(0, blocks);
+    }
+
+    public String getDailyAccrualDate()
+    {
+        return this.dailyAccrualDate;
+    }
+
+    public int getDailyAccruedClaimBlocks()
+    {
+        return this.dailyAccruedClaimBlocks;
+    }
+
+    int getAccrualRemainder()
+    {
+        this.getAccruedClaimBlocks();
+        return this.accrualRemainder;
+    }
+
+    void setAccrualRemainder(int remainder)
+    {
+        this.accrualRemainder = Math.max(0, Math.min(5, remainder));
     }
 
     public @Nullable BoundaryVisualization getVisibleBoundaries()

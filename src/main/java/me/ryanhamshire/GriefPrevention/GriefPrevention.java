@@ -45,6 +45,7 @@ import org.bukkit.World.Environment;
 import org.bukkit.block.Block;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
+import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.AnimalTamer;
@@ -135,6 +136,41 @@ public class GriefPrevention extends JavaPlugin
     public double config_claims_abandonReturnRatio;                 //the portion of claim blocks returned to a player when a claim is abandoned
     public int config_claims_blocksAccruedPerHour_default;            //how many additional blocks players get each hour of play (can be zero) without any special permissions
     public int config_claims_maxAccruedBlocks_default;                //the limit on accrued blocks (over time) for players without any special permissions.  doesn't limit purchased or admin-gifted blocks
+    public int config_claims_maxAccruedBlocksPerDay_default;          //daily limit on claim blocks earned through play time; zero disables the limit
+    private final List<PermissionAccrualBonus> config_claims_permissionAccrualBonuses = new ArrayList<>();
+
+    private static class PermissionAccrualBonus
+    {
+        final String permission;
+        final int hourly;
+        final int daily;
+        final int maximum;
+
+        PermissionAccrualBonus(String permission, int hourly, int daily, int maximum)
+        {
+            this.permission = permission;
+            this.hourly = hourly;
+            this.daily = daily;
+            this.maximum = maximum;
+        }
+    }
+
+    int[] getClaimBlockAccrualBonuses(Player player)
+    {
+        long hourly = 0;
+        long daily = 0;
+        long maximum = 0;
+        for (PermissionAccrualBonus bonus : this.config_claims_permissionAccrualBonuses)
+        {
+            if (!player.hasPermission(bonus.permission)) continue;
+            hourly += bonus.hourly;
+            daily += bonus.daily;
+            maximum += bonus.maximum;
+        }
+        return new int[]{(int) Math.min(hourly, Integer.MAX_VALUE),
+                (int) Math.min(daily, Integer.MAX_VALUE),
+                (int) Math.min(maximum, Integer.MAX_VALUE)};
+    }
     public int config_claims_accruedIdleThreshold;                    //how far (in blocks) a player must move in order to not be considered afk/idle when determining accrued claim blocks
     public int config_claims_accruedIdlePercent;                    //how much percentage of claim block accruals should idle players get
     public int config_claims_maxDepth;                                //limit on how deep claims can go
@@ -358,7 +394,8 @@ public class GriefPrevention extends JavaPlugin
 
         //unless claim block accrual is disabled, start the recurring per 10 minute event to give claim blocks to online players
         //20L ~ 1 second
-        if (this.config_claims_blocksAccruedPerHour_default > 0)
+        if (this.config_claims_blocksAccruedPerHour_default > 0 ||
+                this.config_claims_permissionAccrualBonuses.stream().anyMatch(bonus -> bonus.hourly > 0))
         {
             DeliverClaimBlocksTask task = new DeliverClaimBlocksTask(null, this);
             this.getServer().getScheduler().scheduleSyncRepeatingTask(this, task, 20L * 60 * 10, 20L * 60 * 10);
@@ -581,6 +618,23 @@ public class GriefPrevention extends JavaPlugin
         this.config_claims_blocksAccruedPerHour_default = config.getInt("GriefPrevention.Claims.Claim Blocks Accrued Per Hour.Default", config_claims_blocksAccruedPerHour_default);
         this.config_claims_maxAccruedBlocks_default = config.getInt("GriefPrevention.Claims.MaxAccruedBlocks", 80000);
         this.config_claims_maxAccruedBlocks_default = config.getInt("GriefPrevention.Claims.Max Accrued Claim Blocks.Default", this.config_claims_maxAccruedBlocks_default);
+        this.config_claims_maxAccruedBlocksPerDay_default = Math.max(0, config.getInt("GriefPrevention.Claims.Max Claim Blocks Accrued Per Day.Default", 0));
+        this.config_claims_permissionAccrualBonuses.clear();
+        ConfigurationSection accrualBonuses = config.getConfigurationSection("GriefPrevention.Claims.Permission Accrual Bonuses");
+        if (accrualBonuses != null)
+        {
+            for (String id : accrualBonuses.getKeys(false))
+            {
+                ConfigurationSection entry = accrualBonuses.getConfigurationSection(id);
+                if (entry == null) continue;
+                String permission = entry.getString("Permission", "").trim();
+                if (permission.isEmpty()) continue;
+                this.config_claims_permissionAccrualBonuses.add(new PermissionAccrualBonus(permission,
+                        Math.max(0, entry.getInt("HourlyBonus", 0)),
+                        Math.max(0, entry.getInt("DailyBonus", 0)),
+                        Math.max(0, entry.getInt("MaxAccruedBonus", 0))));
+            }
+        }
         this.config_claims_accruedIdleThreshold = config.getInt("GriefPrevention.Claims.AccruedIdleThreshold", 0);
         this.config_claims_accruedIdleThreshold = config.getInt("GriefPrevention.Claims.Accrued Idle Threshold", this.config_claims_accruedIdleThreshold);
         this.config_claims_accruedIdlePercent = config.getInt("GriefPrevention.Claims.AccruedIdlePercent", 0);
@@ -842,6 +896,20 @@ public class GriefPrevention extends JavaPlugin
         outConfig.set("GriefPrevention.Claims.InitialBlocks", this.config_claims_initialBlocks);
         outConfig.set("GriefPrevention.Claims.Claim Blocks Accrued Per Hour.Default", this.config_claims_blocksAccruedPerHour_default);
         outConfig.set("GriefPrevention.Claims.Max Accrued Claim Blocks.Default", this.config_claims_maxAccruedBlocks_default);
+        outConfig.set("GriefPrevention.Claims.Max Claim Blocks Accrued Per Day.Default", this.config_claims_maxAccruedBlocksPerDay_default);
+        if (accrualBonuses != null)
+        {
+            for (String id : accrualBonuses.getKeys(false))
+            {
+                ConfigurationSection entry = accrualBonuses.getConfigurationSection(id);
+                if (entry == null) continue;
+                String path = "GriefPrevention.Claims.Permission Accrual Bonuses." + id;
+                outConfig.set(path + ".Permission", entry.getString("Permission", ""));
+                outConfig.set(path + ".HourlyBonus", Math.max(0, entry.getInt("HourlyBonus", 0)));
+                outConfig.set(path + ".DailyBonus", Math.max(0, entry.getInt("DailyBonus", 0)));
+                outConfig.set(path + ".MaxAccruedBonus", Math.max(0, entry.getInt("MaxAccruedBonus", 0)));
+            }
+        }
         outConfig.set("GriefPrevention.Claims.Accrued Idle Threshold", this.config_claims_accruedIdleThreshold);
         outConfig.set("GriefPrevention.Claims.AccruedIdlePercent", this.config_claims_accruedIdlePercent);
         outConfig.set("GriefPrevention.Claims.AbandonReturnRatio", this.config_claims_abandonReturnRatio);

@@ -86,7 +86,11 @@ class DeliverClaimBlocksTask implements Runnable
         try
         {
             //determine how fast blocks accrue for this player //RoboMWM: addons determine this instead
-            int accrualRate = instance.config_claims_blocksAccruedPerHour_default;
+            int[] bonuses = instance.getClaimBlockAccrualBonuses(player);
+            int accrualRate = (int) Math.min(Integer.MAX_VALUE,
+                    Math.max(0L, (long) instance.config_claims_blocksAccruedPerHour_default + bonuses[0]));
+            int dailyLimit = instance.config_claims_maxAccruedBlocksPerDay_default == 0 ? 0 :
+                    (int) Math.min(Integer.MAX_VALUE, (long) instance.config_claims_maxAccruedBlocksPerDay_default + bonuses[1]);
 
             //determine idle accrual rate when idle
             if (isIdle)
@@ -101,7 +105,11 @@ class DeliverClaimBlocksTask implements Runnable
             }
 
             //fire event for addons
+            long hourlyParts = (long) accrualRate + playerData.getAccrualRemainder();
+            int blocksThisRound = (int) Math.min(Integer.MAX_VALUE, hourlyParts / 6);
+            int remainingParts = (int) (hourlyParts % 6);
             AccrueClaimBlocksEvent event = new AccrueClaimBlocksEvent(player, accrualRate, isIdle);
+            event.setBlocksToAccrue(blocksThisRound);
             instance.getServer().getPluginManager().callEvent(event);
             if (event.isCancelled())
             {
@@ -109,15 +117,17 @@ class DeliverClaimBlocksTask implements Runnable
                 return; //event was cancelled
             }
 
+            playerData.setAccrualRemainder(remainingParts);
+
             //set actual accrual
             accrualRate = event.getBlocksToAccrue();
             if (accrualRate < 0) accrualRate = 0;
-            playerData.accrueBlocks(accrualRate);
-            GriefPrevention.AddLogEntry("Delivering " + event.getBlocksToAccrue() + " blocks to " + player.getName(), CustomLogEntryTypes.Debug, true);
+            int granted = playerData.accrueBlocksLimited(accrualRate, dailyLimit, bonuses[2]);
+            GriefPrevention.AddLogEntry("Delivering " + granted + " blocks to " + player.getName(), CustomLogEntryTypes.Debug, true);
 
-            //intentionally NOT saving data here to reduce overall secondary storage access frequency
-            //many other operations will cause this player's data to save, including his eventual logout
-            //dataStore.savePlayerData(player.getUniqueIdentifier(), playerData);
+            //Persist daily accrual immediately so a restart cannot reset the daily allowance.
+            if (granted > 0 && dailyLimit > 0)
+                dataStore.savePlayerData(player.getUniqueId(), playerData);
         }
         catch (Exception e)
         {

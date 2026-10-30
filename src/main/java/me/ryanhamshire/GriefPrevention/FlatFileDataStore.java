@@ -656,6 +656,18 @@ public class FlatFileDataStore extends DataStore
                     //convert that to a number and store it
                     playerData.setBonusClaimBlocks(Integer.parseInt(bonusBlocksString));
 
+                    //fourth line stores today's earned claim blocks; older files leave it blank
+                    if (iterator.hasNext())
+                    {
+                        String dailyAccrual = iterator.next();
+                        if (!dailyAccrual.isEmpty())
+                        {
+                            String[] parts = dailyAccrual.split(",", 2);
+                            playerData.setDailyAccrual(parts[0], Integer.parseInt(parts[1]));
+                        }
+                    }
+                    if (iterator.hasNext()) playerData.setAccrualRemainder(Integer.parseInt(iterator.next()));
+
                     //fourth line is a double-semicolon-delimited list of claims, which is currently ignored
                     //String claimsString = inStream.readLine();
                     //iterator.next();
@@ -714,8 +726,13 @@ public class FlatFileDataStore extends DataStore
             fileContent.append(String.valueOf(playerData.getBonusClaimBlocks()));
             fileContent.append("\n");
 
-            //fourth line is blank
+            //fourth line stores the date and number of claim blocks earned today
+            if (playerData.getDailyAccrualDate() != null)
+                fileContent.append(playerData.getDailyAccrualDate()).append(",").append(playerData.getDailyAccruedClaimBlocks());
             fileContent.append("\n");
+
+            //fifth line carries the fractional remainder of hourly accrual
+            fileContent.append(playerData.getAccrualRemainder()).append("\n");
 
             //write data to file
             File playerDataFile = new File(playerDataFolderPath + File.separator + playerID.toString());
