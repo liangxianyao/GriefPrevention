@@ -860,7 +860,12 @@ public abstract class DataStore
      */
     synchronized public CreateClaimResult createClaim(World world, int x1, int x2, int y1, int y2, int z1, int z2, UUID ownerID, Claim parent, Long id, Player creatingPlayer)
     {
-        return createClaim(world, x1, x2, y1, y2, z1, z2, ownerID, parent, id, creatingPlayer, false);
+        return createClaim(world, x1, x2, y1, y2, z1, z2, ownerID, parent, id, creatingPlayer, false, true);
+    }
+
+    synchronized public CreateClaimResult createClaim(World world, int x1, int x2, int y1, int y2, int z1, int z2, UUID ownerID, Claim parent, Long id, Player creatingPlayer, boolean dryRun)
+    {
+        return createClaim(world, x1, x2, y1, y2, z1, z2, ownerID, parent, id, creatingPlayer, dryRun, true);
     }
 
     //creates a claim.
@@ -874,7 +879,7 @@ public abstract class DataStore
     //does NOT check a player has permission to create a claim, or enough claim blocks.
     //does NOT check minimum claim size constraints
     //does NOT visualize the new claim for any players
-    synchronized public CreateClaimResult createClaim(World world, int x1, int x2, int y1, int y2, int z1, int z2, UUID ownerID, Claim parent, Long id, Player creatingPlayer, boolean dryRun)
+    synchronized public CreateClaimResult createClaim(World world, int x1, int x2, int y1, int y2, int z1, int z2, UUID ownerID, Claim parent, Long id, Player creatingPlayer, boolean dryRun, boolean chargeCreationCost)
     {
         CreateClaimResult result = new CreateClaimResult();
 
@@ -1009,6 +1014,15 @@ public abstract class DataStore
             return result;
 
         }
+
+        if (chargeCreationCost && parent == null && ownerID != null && creatingPlayer != null
+                && !GriefPrevention.instance.chargeClaimCreationCost(creatingPlayer, newClaim.getArea(), result))
+        {
+            result.succeeded = false;
+            result.claim = null;
+            return result;
+        }
+
         //otherwise add this new claim to the data store to make it effective
         this.addClaim(newClaim, true);
 
@@ -1390,6 +1404,18 @@ public abstract class DataStore
         //if succeeded
         if (result.succeeded)
         {
+            if (claim.parent == null && claim.ownerID != null && resizingPlayer != null
+                    && claim.ownerID.equals(resizingPlayer.getUniqueId()))
+            {
+                long addedArea = (long) result.claim.getArea() - claim.getArea();
+                if (addedArea > 0 && !GriefPrevention.instance.chargeClaimCreationCost(resizingPlayer, addedArea, result))
+                {
+                    result.succeeded = false;
+                    result.claim = null;
+                    return result;
+                }
+            }
+
             removeFromChunkClaimMap(claim); // remove the old boundary from the chunk cache
             // copy the boundary from the claim created in the dry run of createClaim() to our existing claim
             claim.lesserBoundaryCorner = result.claim.lesserBoundaryCorner;
@@ -1542,6 +1568,7 @@ public abstract class DataStore
 
             //inform about success, visualize, communicate remaining blocks available
             GriefPrevention.sendMessage(player, TextMode.Success, Messages.ClaimResizeSuccess, String.valueOf(claimBlocksRemaining));
+            GriefPrevention.sendClaimEconomyCostPaid(player, result);
             BoundaryVisualization.visualizeClaim(player, result.claim, VisualizationType.CLAIM);
 
             //if resizing someone else's claim, make a log entry
@@ -1571,20 +1598,23 @@ public abstract class DataStore
         }
         else
         {
-            if (result.claim != null)
+            if (!GriefPrevention.sendClaimEconomyFailure(player, result))
             {
-                //inform player
-                GriefPrevention.sendMessage(player, TextMode.Err, Messages.ResizeFailOverlap);
+                if (result.claim != null)
+                {
+                    //inform player
+                    GriefPrevention.sendMessage(player, TextMode.Err, Messages.ResizeFailOverlap);
 
-                //show the player the conflicting claim
-                BoundaryVisualization.visualizeClaim(player, result.claim, VisualizationType.CONFLICT_ZONE);
+                    //show the player the conflicting claim
+                    BoundaryVisualization.visualizeClaim(player, result.claim, VisualizationType.CONFLICT_ZONE);
 
-                //log conflicting claim, if debug logs are enabled
-                GriefPrevention.AddLogEntry(player.getName() + " attempted to create a claim, but conflicted with claim " + result.claim.id, CustomLogEntryTypes.Debug);
-            }
-            else
-            {
-                GriefPrevention.sendMessage(player, TextMode.Err, Messages.ResizeFailOverlapRegion);
+                    //log conflicting claim, if debug logs are enabled
+                    GriefPrevention.AddLogEntry(player.getName() + " attempted to create a claim, but conflicted with claim " + result.claim.id, CustomLogEntryTypes.Debug);
+                }
+                else
+                {
+                    GriefPrevention.sendMessage(player, TextMode.Err, Messages.ResizeFailOverlapRegion);
+                }
             }
         }
     }

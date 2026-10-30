@@ -40,9 +40,9 @@
 - Produces: `config_economy_claimCreationCostPerBlock`，从新配置项读取，默认 `0`，并写回配置。
 - `EconomyHandler.loadEconomy` 在该单价大于零时加载 Vault Economy。
 
-- [ ] 在经济字段区增加单价字段，并在配置读取/写回处使用 `GriefPrevention.Economy.ClaimCreationCostPerBlock`。
-- [ ] 将新字段加入 `EconomyHandler` 的启用条件；购买、出售配置继续保持原逻辑。
-- [ ] 用 `rg -n "ClaimCreationCostPerBlock|config_economy_claimCreationCostPerBlock" src/main/java` 核对声明、读取、写回和加载条件均存在。
+- [x] 在经济字段区增加单价字段，并在配置读取/写回处使用 `GriefPrevention.Economy.ClaimCreationCostPerBlock`。
+- [x] 将新字段加入 `EconomyHandler` 的启用条件；购买、出售配置继续保持原逻辑。
+- [x] 用 `rg -n "ClaimCreationCostPerBlock|config_economy_claimCreationCostPerBlock" src/main/java` 核对声明、读取、写回和加载条件均存在。
 
 ### Task 2: 新建顶层领地扣费与玩家反馈
 
@@ -59,13 +59,13 @@
 - `DataStore.createClaim(..., boolean dryRun, boolean chargeCreationCost)` 控制自动新手箱子免费；现有普通调用仍启用计费，`dryRun` 永不扣费。
 - `DataStore` 使用统一的 Vault 扣费逻辑，费用为 `area × config_economy_claimCreationCostPerBlock`。
 
-- [ ] 扩展 `CreateClaimResult`，保留现有 `succeeded`/`claim` 字段，增加经济失败消息、消息参数和扣费金额。
-- [ ] 在 `Messages` 与 `DataStore` 默认消息中增加“金币已扣除”和“经济服务不可用”中文消息；余额不足复用已有 `InsufficientFunds`。
-- [ ] 为 `DataStore.createClaim` 增加显式费用开关重载；校验、WorldGuard 和 `ClaimCreatedEvent` 均通过后，且保存前，才处理私人顶层领地扣款。
-- [ ] 经济服务不可用、余额不足或 Vault 扣款失败时返回带原因的失败结果，不添加领地；扣款成功后再保存领地并记录实际费用。
-- [ ] `BlockEventHandler` 中半径为 0 与大于 0 的自动新手箱子保护区都显式传入免费开关。
-- [ ] `/claim` 和金铲子顶层领地流程优先显示经济失败原因；成功时显示扣费金额；子领地维持免费。
-- [ ] 用 `rg -n -C 2 "createClaim\\(" src/main/java/me/ryanhamshire/GriefPrevention` 检查所有创建调用，确认自动箱子跳过费用、普通顶层路径默认计费、试算不扣款。
+- [x] 扩展 `CreateClaimResult`，保留现有 `succeeded`/`claim` 字段，增加经济失败消息、消息参数和扣费金额。
+- [x] 在 `Messages` 与 `DataStore` 默认消息中增加“金币已扣除”和“经济服务不可用”中文消息；余额不足复用已有 `InsufficientFunds`。
+- [x] 为 `DataStore.createClaim` 增加显式费用开关重载；校验、WorldGuard 和 `ClaimCreatedEvent` 均通过后，且保存前，才处理私人顶层领地扣款。
+- [x] 经济服务不可用、余额不足或 Vault 扣款失败时返回带原因的失败结果，不添加领地；扣款成功后再保存领地并记录实际费用。
+- [x] `BlockEventHandler` 中半径为 0 与大于 0 的自动新手箱子保护区都显式传入免费开关。
+- [x] `/claim` 和金铲子顶层领地流程优先显示经济失败原因；成功时显示扣费金额；子领地维持免费。
+- [x] 用 `rg -n 'createClaim\\(' src/main/java/me/ryanhamshire/GriefPrevention` 检查所有创建调用，确认自动箱子跳过费用、普通顶层路径默认计费、试算不扣款。
 
 ### Task 3: 扩建按新增面积扣费
 
@@ -77,10 +77,10 @@
 - `DataStore.resizeClaim(...)` 复用 Task 2 的扣费逻辑；只对玩家扩建自己的私人顶层领地计费。
 - `CreateClaimResult` 继续承载失败消息和实际扣款金额，供 `resizeClaimWithChecks` 显示。
 
-- [ ] 在 `resizeClaim` 成功完成 dry-run 后、修改原边界前计算 `max(0, newArea - oldArea)`，按差额扣费。
-- [ ] 余额不足或扣款失败时不修改边界，并把经济失败原因放入结果。
-- [ ] 对缩小、等面积重画、子领地和管理员代操作保持免费；扩建成功时提示实际扣费。
-- [ ] 检查 `resizeClaimWithChecks` 对经济失败先显示专用消息，不再发送冲突区域类通用提示；检查成功后原有边界和领地格余量反馈仍保留。
+- [x] 在 `resizeClaim` 成功完成 dry-run 后、修改原边界前计算 `max(0, newArea - oldArea)`，按差额扣费。
+- [x] 余额不足或扣款失败时不修改边界，并把经济失败原因放入结果。
+- [x] 对缩小、等面积重画、子领地和管理员代操作保持免费；扩建成功时提示实际扣费。
+- [x] 检查 `resizeClaimWithChecks` 对经济失败先显示专用消息，不再发送冲突区域类通用提示；检查成功后原有边界和领地格余量反馈仍保留。
 
 ### Task 4: 玩法记录、构建与正式服部署
 
@@ -90,10 +90,10 @@
 - Modify: `E:\MYSQL\正式服V2.0\plugins\GriefPreventionData\messages.yml`
 - Replace after backup: `E:\MYSQL\正式服V2.0\plugins\圈地系统GriefPrevention.jar`
 
-- [ ] 台账记录本次玩法规则、模块/配置和验证结果。
-- [ ] 将正式服 `ClaimCreationCostPerBlock` 设为 `10.0`，保留现有 `ClaimBlocksPurchaseCost`、`ClaimBlocksSellValue` 和世界模式；为新增消息合入中文文本。
-- [ ] 在源码仓库运行 `mvn -Dmaven.test.skip=true package`；预期 Maven 返回 `BUILD SUCCESS`，测试不运行。
-- [ ] 用 `jar tf target/圈地系统GriefPrevention.jar` 检查 JAR 包含插件描述符与更新后的类；读取 SHA-256。
-- [ ] 部署前再次核对没有 `E:\MYSQL\正式服V2.0` 的 Minecraft Java 进程；备份正式服 JAR 和两个 YAML 文件，再复制候选 JAR、更新配置与消息。
-- [ ] 对比候选 JAR 与正式服 JAR 的 SHA-256，并解析/核对 YAML 关键值；不启动或重启服务器。
+- [x] 台账记录本次玩法规则、模块/配置和验证结果。
+- [x] 将正式服 `ClaimCreationCostPerBlock` 设为 `10.0`，保留现有 `ClaimBlocksPurchaseCost`、`ClaimBlocksSellValue` 和世界模式；为新增消息合入中文文本。
+- [x] 在源码仓库运行 `mvn -Dmaven.test.skip=true package`；预期 Maven 返回 `BUILD SUCCESS`，测试不运行。
+- [x] 用 JAR 内容清单检查插件描述符与更新后的类；读取 SHA-256。
+- [x] 部署前再次核对没有 `E:\MYSQL\正式服V2.0` 的 Minecraft Java 进程；备份正式服 JAR 和两个 YAML 文件，再复制候选 JAR、更新配置与消息。
+- [x] 对比候选 JAR 与正式服 JAR 的 SHA-256，并解析/核对 YAML 关键值；不启动或重启服务器。
 

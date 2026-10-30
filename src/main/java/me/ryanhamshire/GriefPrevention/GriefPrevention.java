@@ -1226,7 +1226,11 @@ public class GriefPrevention extends JavaPlugin
                     ownerId, null, null, player);
             if (!result.succeeded || result.claim == null)
             {
-                if (result.claim != null)
+                if (sendClaimEconomyFailure(player, result))
+                {
+                    return true;
+                }
+                else if (result.claim != null)
                 {
                     GriefPrevention.sendMessage(player, TextMode.Err, Messages.CreateClaimFailOverlapShort);
 
@@ -1240,6 +1244,7 @@ public class GriefPrevention extends JavaPlugin
             else
             {
                 GriefPrevention.sendMessage(player, TextMode.Success, Messages.CreateClaimSuccess);
+                sendClaimEconomyCostPaid(player, result);
 
                 //link to a video demo of land claiming, based on world type
                 if (GriefPrevention.instance.creativeRulesApply(player.getLocation()))
@@ -3540,7 +3545,7 @@ public class GriefPrevention extends JavaPlugin
         while (!chunk.isLoaded() || !chunk.load(true)) ;
     }
 
-    boolean chargeClaimCreationCost(Player player, int area, CreateClaimResult result)
+    boolean chargeClaimCreationCost(Player player, long area, CreateClaimResult result)
     {
         double costPerBlock = this.config_economy_claimCreationCostPerBlock;
         if (costPerBlock == 0) return true;
@@ -3552,7 +3557,7 @@ public class GriefPrevention extends JavaPlugin
             return false;
         }
 
-        double totalCost = area * costPerBlock;
+        double totalCost = (double) area * costPerBlock;
         if (!Double.isFinite(totalCost) || totalCost <= 0)
         {
             result.economyFailureMessage = Messages.ClaimEconomyTransactionFailed;
